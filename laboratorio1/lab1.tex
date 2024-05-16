@@ -1,0 +1,205 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+
+\title{Relatório de Configuração de Rede e Firewall}
+\author{Seu Nome}
+\date{Data}
+
+\begin{document}
+
+\maketitle
+
+\section{Introdução}
+Este relatório descreve as configurações de rede e firewall implementadas nos roteadores Router1 e Router2. Também inclui uma explicação sobre o número de hosts permitidos em cada rede configurada.
+
+\section{Configuração do Router1}
+\begin{itemize}
+    \item \textbf{Interfaces de Rede}:
+    \begin{itemize}
+        \item \textbf{enp0s3}: Conectado à Internet.
+        \item \textbf{enp0s8}: Conectado à rede local extnet.
+    \end{itemize}
+    \item \textbf{Servidor DHCP}:
+    \begin{itemize}
+        \item Sub-rede: 10.254.254.0/30
+        \item Quantidade de hosts: \(2^2 - 2 = 2\)
+    \end{itemize}
+\end{itemize}
+
+\subsection{Script de Configuração do iptables}
+\begin{verbatim}
+#!/bin/bash
+
+# Limpar as regras existentes
+iptables -F
+iptables -X
+
+# Definir política padrão para as chains
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT ACCEPT
+
+# Permitir tráfego na interface loopback
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A OUTPUT -o lo -j ACCEPT
+
+# Permitir tráfego já estabelecido e relacionado
+iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# Permitir SSH na interface enp0s3 e enp0s8
+iptables -A INPUT -i enp0s3 -p tcp --dport 22 -j ACCEPT
+iptables -A INPUT -i enp0s8 -p tcp --dport 22 -j ACCEPT
+
+# Permitir ping (ICMP) em todas as interfaces
+iptables -A INPUT -p icmp -j ACCEPT
+
+# Permitir tráfego DHCP em todas as interfaces
+iptables -A INPUT -p udp --sport 67:68 --dport 67:68 -j ACCEPT
+
+# Encaminhar tráfego de rede local (extnet) para a Internet (enp0s3)
+iptables -t nat -A POSTROUTING -o enp0s3 -j MASQUERADE
+
+# Salvar as configurações
+iptables-save > /etc/iptables/rules.v4
+
+# Habilitar roteamento IPv4
+echo 1 > /proc/sys/net/ipv4/ip_forward
+\end{verbatim}
+
+\subsubsection{Configuração do Servidor DHCP (dhcpd.conf)}
+\begin{verbatim}
+option domain-name "lab.net";
+option domain-name-servers 1.1.1.1, 8.8.8.8;
+
+default-lease-time 600;
+max-lease-time 7200;
+
+ddns-update-style none;
+authoritative;
+
+subnet 10.254.254.0 netmask 255.255.255.252 {
+    range 10.254.254.1 10.254.254.2;
+    option routers 10.254.254.1;
+}
+\end{verbatim}
+
+\section{Configuração do Router2}
+\begin{itemize}
+    \item \textbf{Interfaces de Rede}:
+    \begin{itemize}
+        \item \textbf{enp0s8}: Conectado à rede extnet.
+        \item \textbf{enp0s9}: Conectado à rede servnet.
+        \item \textbf{enp0s10}: Conectado à rede intnet.
+    \end{itemize}
+    \item \textbf{Servidor DHCP}:
+    \begin{itemize}
+        \item Sub-rede servnet: 10.2.2.0/25
+        \item Quantidade de hosts na servnet: \(2^7 - 2 = 126\)
+        \item Sub-rede intnet: 10.3.2.0/23
+        \item Quantidade de hosts na intnet: \(2^9 - 2 = 510\)
+    \end{itemize}
+\end{itemize}
+
+\subsection{Script de Configuração do iptables}
+\begin{verbatim}
+#!/bin/bash
+
+# Limpar as regras existentes
+iptables -F
+iptables -X
+
+# Política padrão
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT ACCEPT
+
+# Permitir tráfego de loopback
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A OUTPUT -o lo -j ACCEPT
+
+# Permitir tráfego já estabelecido e relacionado
+iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# Permitir tráfego de saída
+iptables -A OUTPUT -j ACCEPT
+
+# Permitir ping (ICMP) em todas as interfaces
+iptables -A INPUT -p icmp -j ACCEPT
+iptables -A OUTPUT -p icmp -j ACCEPT
+
+# Permitir tráfego DHCP em todas as interfaces
+iptables -A INPUT -p udp --sport 67:68 --dport 67:68 -j ACCEPT
+iptables -A OUTPUT -p udp --sport 67:68 --dport 67:68 -j ACCEPT
+
+# Encaminhar tráfego de rede local (intnet) para a Internet (enp0s8)
+iptables -t nat -A POSTROUTING -s 10.3.2.0/23 -o enp0s8 -j MASQUERADE
+
+# Encaminhar tráfego de rede local (servnet) para a Internet (enp0s8)
+iptables -t nat -A POSTROUTING -s 10.2.2.0/25 -o enp0s8 -j MASQUERADE
+
+# Permitir acesso de servidores na servnet aos clientes na intnet
+iptables -A FORWARD -s 10.2.2.0/25 -d 10.3.2.0/23 -j ACCEPT
+
+# Permitir acesso de clientes na intnet à servnet e à Internet
+iptables -A FORWARD -s 10.3.2.0/23 -d 10.2.2.0/25 -j ACCEPT
+iptables -A FORWARD -s 10.3.2.0/23 -o enp0s8 -j ACCEPT
+
+# Permitir acesso de servidores na servnet a internet e aos clientes na intnet
+iptables -A FORWARD -s 10.2.2.0/25 -d 10.3.2.0/23 -j ACCEPT
+iptables -A FORWARD -s 10.2.2.0/25 -o enp0s8 -j ACCEPT
+
+# Habilitar roteamento IPv4
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+# Salvar as regras
+iptables-save > /etc/iptables/rules.v4
+\end{verbatim}
+
+\subsubsection{Configuração do Servidor DHCP (dhcpd.conf)}
+\begin{verbatim}
+option domain-name "lab.net";
+option domain-name-servers 1.1.1.1;
+
+default-lease-time 600;
+max-lease-time 7200;
+
+subnet 10.2.2.0 netmask 255.255.255.128 {
+    interface enp0s9;
+    range 10.2.2.2 10.2.2.126;
+    option routers 10.2.2.1;
+}
+
+subnet 10.3.2.0 netmask 255.255.254.0 {
+    interface enp0s10;
+    range 10.3.2.2 10.3.3.254;
+    option routers 10.3.2.1;
+}
+\end{verbatim}
+
+\section{Verificação de Conectividade e Portas Abertas}
+
+\subsection{Comandos \texttt{ss} para Verificar Portas Abertas}
+Exemplo de comando \texttt{ss} para verificar portas abertas no Router1:
+\begin{verbatim}
+ss -tuln
+\end{verbatim}
+
+Exemplo de comando \texttt{ss} para verificar portas abertas no Router2:
+\begin{verbatim}
+ss -tuln
+\end{verbatim}
+
+\subsection{Comandos \texttt{ip} para Verificar Rotas}
+Exemplo de comando \texttt{ip} para verificar rotas no Router1:
+\begin{verbatim}
+ip route show
+\end{verbatim}
+
+Exemplo de comando \texttt{ip} para verificar rotas no Router2:
+\begin{verbatim}
+ip route show
+\end{verbatim}
+
+\end{document}
