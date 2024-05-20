@@ -12,7 +12,7 @@ def setupNetwork():
 
     # Add NAT router and configure IP forwarding
     info('*** Adding NAT router and enabling IP forwarding\n')
-    r1 = net.addHost('r1', ip='10.100.0.1/30')  # Corrigido para addHost
+    r1 = net.addNAT('r1', connect=None, ip='10.100.0.1/30')
     r1.cmd('sysctl net.ipv4.ip_forward=1')
 
     # Add second router and configure IP forwarding
