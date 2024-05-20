@@ -14,10 +14,12 @@ def setupNetwork():
     info('*** Adding NAT router and enabling IP forwarding\n')
     r1 = net.addNAT('r1', connect=None, ip='10.100.0.1/30')
     r1.cmd('sysctl net.ipv4.ip_forward=1')
+    
 
     # Add second router and configure IP forwarding
     r2 = net.addHost('r2', ip='10.100.0.2/30')
     r2.cmd('sysctl net.ipv4.ip_forward=1')
+   
 
     # Add switches
     info('*** Adding switches\n')
@@ -44,10 +46,18 @@ def setupNetwork():
     net.addLink(h3, s2)
     net.addLink(h4, s2)
 
+  
     # Start the network
     info('*** Starting network\n')
     net.start()
-
+    
+    # Configura NAT no roteador R1 para acesso à Internet
+    r1.cmd('iptables -t nat -A POSTROUTING -o enp0s1 -j MASQUERADE')
+     # Configurar default route em R2 para R1
+    r2.cmd('ip route add default via 10.100.0.1 dev r2-eth0')
+    r2.cmd('iptables -t nat -A POSTROUTING -o r2-eth0 -j MASQUERADE')
+    
+    
     # Run the CLI
     info('*** Running CLI\n')
     CLI(net)
