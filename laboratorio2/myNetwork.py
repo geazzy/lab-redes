@@ -1,5 +1,5 @@
 from mininet.net import Mininet
-from mininet.node import Controller, OVSKernelSwitch, Node
+from mininet.node import Controller, OVSKernelSwitch
 from mininet.log import setLogLevel, info
 from mininet.cli import CLI
 
@@ -56,6 +56,14 @@ def setupNetwork():
 
     r2.cmd('ip route add default via 10.100.0.1 dev r2-eth0')
     r2.cmd('iptables -t nat -A POSTROUTING -o r2-eth0 -j MASQUERADE')
+    
+    info('*** Restringir largura de banda para 100Mb/s e adicionar atraso de 10ms')
+    for node in net.hosts:
+        for interface in node.intfList():
+            if node.intfIsUp(interface):
+                node.cmd('tc qdisc add dev {} root handle 1:0 netem delay 10ms rate 100mbit'.format(interface))
+
+
 
     # Run the CLI
     info('*** Running CLI\n')
