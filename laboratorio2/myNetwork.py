@@ -2,9 +2,11 @@ from mininet.net import Mininet
 from mininet.node import Controller, OVSKernelSwitch
 from mininet.log import setLogLevel, info
 from mininet.cli import CLI
+from mininet.link import TCLink  # Importar TCLink para controle de tráfego
 
 def setupNetwork():
-    net = Mininet(controller=Controller, switch=OVSKernelSwitch)
+    # Criar a rede com controlador, switches e links com controle de tráfego
+    net = Mininet(controller=Controller, switch=OVSKernelSwitch, link=TCLink)
 
     # Add controller
     info('*** Adding controller\n')
@@ -15,7 +17,7 @@ def setupNetwork():
     r1 = net.addNAT('r1', connect=None, ip='10.100.0.1/30')
     r1.cmd('sysctl net.ipv4.ip_forward=1')
 
-    # Add second router and configure IP forwarding
+    # Add router and configure IP forwarding
     r2 = net.addHost('r2', ip='10.100.0.2/30')
     r2.cmd('sysctl net.ipv4.ip_forward=1')
 
@@ -24,11 +26,16 @@ def setupNetwork():
     s1 = net.addSwitch('s1')
     s2 = net.addSwitch('s2')
 
-    # Add links between routers and switches
-    info('*** Adding links\n')
-    net.addLink(r1, r2, intfName1='r1-eth0', intfName2='r2-eth0', params1={'ip': '10.100.0.1/30'}, params2={'ip': '10.100.0.2/30'})
-    net.addLink(s1, r2, intfName2='r2-eth1', params2={'ip': '10.100.1.1/26'})
-    net.addLink(s2, r2, intfName2='r2-eth2', params2={'ip': '10.100.2.1/23'})
+   # Adicionar links entre roteadores e switches com restrições de largura de banda e atraso
+    info('*** Adicionando links\n')
+    net.addLink(r1, r2, intfName1='r1-eth0', intfName2='r2-eth0',
+                params1={'ip': '10.100.0.1/30'}, params2={'ip': '10.100.0.2/30'},
+                bw=100, delay='10ms')
+
+    net.addLink(s1, r2, intfName2='r2-eth1', params2={'ip': '10.100.1.1/26'},
+                bw=100, delay='10ms')
+    net.addLink(s2, r2, intfName2='r2-eth2', params2={'ip': '10.100.2.1/23'},
+                bw=100, delay='10ms')
 
     # Add hosts
     info('*** Adding hosts\n')
@@ -37,12 +44,12 @@ def setupNetwork():
     h3 = net.addHost('h3', ip='10.100.2.2/23', defaultRoute='via 10.100.2.1')
     h4 = net.addHost('h4', ip='10.100.2.3/23', defaultRoute='via 10.100.2.1')
 
-    # Connect hosts to switches
-    info('*** Connecting hosts to switches\n')
-    net.addLink(h1, s1)
-    net.addLink(h2, s1)
-    net.addLink(h3, s2)
-    net.addLink(h4, s2)
+   # Conectar hosts aos switches com restrições de largura de banda e atraso
+    info('*** Conectando hosts aos switches\n')
+    net.addLink(h1, s1, bw=100, delay='10ms')
+    net.addLink(h2, s1, bw=100, delay='10ms')
+    net.addLink(h3, s2, bw=100, delay='10ms')
+    net.addLink(h4, s2, bw=100, delay='10ms')
 
     # Start the network
     info('*** Starting network\n')
@@ -57,13 +64,6 @@ def setupNetwork():
     r2.cmd('ip route add default via 10.100.0.1 dev r2-eth0')
     r2.cmd('iptables -t nat -A POSTROUTING -o r2-eth0 -j MASQUERADE')
     
-    info('*** Restringir largura de banda para 100Mb/s e adicionar atraso de 10ms')
-    for node in net.hosts:
-        for interface in node.intfList():
-            if node.intfIsUp(interface):
-                node.cmd('tc qdisc add dev {} root handle 1:0 netem delay 10ms rate 100mbit'.format(interface))
-
-
 
     # Run the CLI
     info('*** Running CLI\n')
