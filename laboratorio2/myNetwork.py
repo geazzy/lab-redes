@@ -95,6 +95,23 @@ def setupNetwork():
         h1.cmd(f'echo "{device.name}      IN A    {device.IP()}" >> /etc/bind/db.mininet.local')
     h1.cmd('service bind9 restart')
 
+     # Configurar servidor HTTP em h2
+    info('*** Configurando servidor HTTP em h2\n')
+    h2.cmd('echo "from http.server import SimpleHTTPRequestHandler, HTTPServer\n'
+           'server_address = (\'\', 80)\n'
+           'httpd = HTTPServer(server_address, SimpleHTTPRequestHandler)\n'
+           'httpd.serve_forever()\n" > /tmp/http_server.py')
+    h2.cmd('python3 /tmp/http_server.py &')
+
+    # Configurar redirecionamento de portas em r1 e r2 para acesso ao servidor HTTP de h2
+    info('*** Configurando redirecionamento de portas para o servidor HTTP em h2\n')
+    r1.cmd('iptables -t nat -A PREROUTING -i enp0s1 -p tcp --dport 80 -j DNAT --to-destination 10.100.1.3:80')
+    r1.cmd('iptables -A FORWARD -p tcp -d 10.100.1.3 --dport 80 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT')
+    
+    r2.cmd('iptables -t nat -A PREROUTING -i r2-eth0 -p tcp --dport 80 -j DNAT --to-destination 10.100.1.3:80')
+    r2.cmd('iptables -A FORWARD -p tcp -d 10.100.1.3 --dport 80 -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT')
+
+
     # Testar a taxa de transferência entre h1 e r1
     info("Testando largura de banda entre h1 e r1\n")
     net.iperf((h1, r1), l4Type='UDP')
